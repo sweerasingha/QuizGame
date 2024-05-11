@@ -17,6 +17,7 @@ public class QuizGameClientGUI {
     private BufferedReader in;
     private PrintWriter out;
     private SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss");
+    private boolean gameOver = false;
 
     public QuizGameClientGUI(String serverAddress, int serverPort) throws IOException {
         socket = new Socket(serverAddress, serverPort);
@@ -64,11 +65,13 @@ public class QuizGameClientGUI {
     }
 
     private void sendAnswer(ActionEvent e) {
-        String answer = textFieldAnswer.getText().trim();
-        if (!answer.isEmpty()) {
-            out.println(answer);
-            textFieldAnswer.setText("");
-            textAreaDisplay.append("[" + sdf.format(new Date()) + "] Your answer: " + answer + "\n");
+        if (!gameOver) {
+            String answer = textFieldAnswer.getText().trim();
+            if (!answer.isEmpty()) {
+                out.println(answer);
+                textFieldAnswer.setText("");
+                textAreaDisplay.append("[" + sdf.format(new Date()) + "] Your answer: " + answer + "\n");
+            }
         }
     }
 
@@ -77,12 +80,18 @@ public class QuizGameClientGUI {
             String response;
             while ((response = in.readLine()) != null) {
                 final String finalResponse = response;
-                if (finalResponse.startsWith("QUESTION")) {
-                    String question = "[" + sdf.format(new Date()) + "] QUESTION: " + finalResponse.substring(9);
-                    SwingUtilities.invokeLater(() -> textAreaDisplay.append(question + "\n"));
-                } else if (finalResponse.startsWith("SCORE")) {
-                    SwingUtilities.invokeLater(() -> textAreaDisplay.append(finalResponse + "\n"));
-                }
+                SwingUtilities.invokeLater(() -> {
+                    if (finalResponse.startsWith("QUESTION")) {
+                        textAreaDisplay.append("[" + sdf.format(new Date()) + "] QUESTION: " + finalResponse.substring(9) + "\n");
+                    } else if (finalResponse.startsWith("SCORE")) {
+                        textAreaDisplay.append(finalResponse + "\n");
+                    } else if (finalResponse.equals("GAME OVER: WIN") || finalResponse.equals("GAME OVER: LOSE") || finalResponse.equals("GAME OVER: DRAW")) {
+                        textAreaDisplay.append("[" + sdf.format(new Date()) + "] " + finalResponse + "\n");
+                        gameOver = true;
+                        textFieldAnswer.setEnabled(false);
+                        buttonSend.setEnabled(false);
+                    }
+                });
             }
         } catch (IOException ex) {
             ex.printStackTrace();
