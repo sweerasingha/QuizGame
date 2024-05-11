@@ -5,15 +5,16 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.stream.Collectors;
 
 public class PlayerHandler implements Runnable {
-    private Socket socket;
-    private LobbyManager lobbyManager;
-    private PrintWriter out;
-    private BufferedReader in;
+    private final Socket socket;
+    private final LobbyManager lobbyManager;
+    private final PrintWriter out;
+    private final BufferedReader in;
     private GameSession currentSession;
     private String playerName;
-    private QuizGameServer server;
+    private final QuizGameServer server;
 
     public PlayerHandler(Socket socket, QuizGameServer server, LobbyManager lobbyManager) throws IOException {
         this.socket = socket;
@@ -32,20 +33,15 @@ public class PlayerHandler implements Runnable {
             String line;
             while ((line = in.readLine()) != null) {
                 switch (line.split(" ")[0]) {
-                    case "CREATE_LOBBY":
-                        handleCreateLobby(line.substring("CREATE_LOBBY ".length()));
-                        break;
-                    case "JOIN_LOBBY":
-                        handleJoinLobby(line.substring("JOIN_LOBBY ".length()));
-                        break;
-                    case "START_GAME":
+                    case "CREATE_LOBBY" -> handleCreateLobby(line.substring("CREATE_LOBBY ".length()));
+                    case "JOIN_LOBBY" -> handleJoinLobby(line.substring("JOIN_LOBBY ".length()));
+                    case "START_GAME" -> {
                         if (currentSession != null && playerName.equals(currentSession.getPlayers().get(0).getNickname())) {
                             currentSession.startGame();
                         }
-                        break;
-                    case "NICKNAME":
-                        playerName = line.substring("NICKNAME ".length());
-                        break;
+                    }
+                    case "NICKNAME" -> playerName = line.substring("NICKNAME ".length());
+                    case "ANSWER" -> handleAnswer(line.substring("ANSWER ".length()));
                 }
             }
         } catch (IOException e) {
@@ -59,12 +55,32 @@ public class PlayerHandler implements Runnable {
         }
     }
 
+    private void handleAnswer(String answer) {
+        if (currentSession != null) {
+            Player player = currentSession.getPlayers().stream()
+                    .filter(p -> p.getNickname().equals(playerName))
+                    .findFirst()
+                    .orElse(null);
+
+            if (player != null) {
+                try {
+                    currentSession.processAnswer(player, answer);
+                } catch (IOException e) {
+                    System.out.println("Error processing answer: " + e.getMessage());
+                }
+            }
+        }
+    }
+
     private void handleCreateLobby(String lobbyName) throws IOException {
         lobbyManager.createLobby(lobbyName);
         currentSession = lobbyManager.joinLobby(lobbyName);
-        currentSession.addPlayer(new Player(socket, playerName));
+        Player newPlayer = new Player(socket, playerName);
+        currentSession.addPlayer(newPlayer);
+        currentSession.setCreator(newPlayer); // Assuming a setCreator method in GameSession
         server.broadcastLobbyList();
         server.broadcastPlayerList(lobbyName);
+        out.println("JOINED_LOBBY " + lobbyName + " creator");  // Indicate that this player is the creator
     }
 
     private void handleJoinLobby(String lobbyName) throws IOException {
@@ -72,7 +88,11 @@ public class PlayerHandler implements Runnable {
         if (currentSession != null) {
             currentSession.addPlayer(new Player(socket, playerName));
             server.broadcastPlayerList(lobbyName);
-            out.println("JOINED_LOBBY " + lobbyName);  // Confirm lobby joining
+            boolean isCreator = playerName.equals(currentSession.getCreator().getNickname());
+            out.println("JOINED_LOBBY " + lobbyName + (isCreator ? " creator" : ""));
+            if (currentSession.getPlayers().size() == 10) {
+                currentSession.startGame();
+            }
         } else {
             out.println("LOBBY_NOT_EXIST");
         }
