@@ -14,10 +14,11 @@ public class Player {
     private PrintWriter output;
     private String answer;
 
-    public Player(Socket socket) throws IOException {
+    // Updated constructor to handle both socket and nickname
+    public Player(Socket socket, String nickname) throws IOException {
         this.socket = socket;
+        this.nickname = nickname; // Assign nickname directly from the parameter
         setupStreams();
-        this.nickname = input.readLine();  // Assume first message is the nickname
         this.score = 0;
     }
 
@@ -35,6 +36,8 @@ public class Player {
     }
 
     public void closeConnection() throws IOException {
+        input.close();
+        output.close();
         socket.close();
     }
 
@@ -47,7 +50,7 @@ public class Player {
     }
 
     public void addScore(int points) {
-        this.score += points;
+        score += points;
     }
 
     public void setAnswer(String answer) {

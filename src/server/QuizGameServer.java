@@ -3,36 +3,36 @@ package server;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 public class QuizGameServer {
     private int port;
     private ServerSocket serverSocket;
     private ExecutorService pool;
-    private List<GameSession> sessions = new ArrayList<>();
-    private int playersPerSession = 2; // Number of players per game session
+    private LobbyManager lobbyManager;
+    private List<PlayerHandler> playerHandlers = new ArrayList<>();
+
+
 
     public QuizGameServer(int port) throws IOException {
         this.port = port;
         serverSocket = new ServerSocket(port);
         pool = Executors.newCachedThreadPool();
+        lobbyManager = new LobbyManager();
     }
 
     public void startServer() {
         System.out.println("Server is listening on port " + port);
         try {
             while (true) {
-                GameSession session = new GameSession();
-                sessions.add(session);
-                for (int i = 0; i < playersPerSession; i++) {
-                    Socket socket = serverSocket.accept();
-                    session.addPlayer(new Player(socket));
-                    System.out.println("Player connected and added to session.");
-                }
-                pool.execute(session);
+                Socket socket = serverSocket.accept();
+                PlayerHandler handler = new PlayerHandler(socket, this, lobbyManager);
+                playerHandlers.add(handler);
+                pool.execute(handler);
             }
         } catch (IOException ex) {
             ex.printStackTrace();
@@ -41,13 +41,33 @@ public class QuizGameServer {
         }
     }
 
-    private void stopServer() {
+    public void stopServer() {
         try {
             serverSocket.close();
         } catch (IOException ex) {
             ex.printStackTrace();
         }
     }
+
+    public void broadcastLobbyList() throws IOException {
+        String lobbies = String.join(",", lobbyManager.getAvailableLobbies().keySet());
+        for (PlayerHandler handler : playerHandlers) {
+            handler.getOutput().println("LOBBY_LIST " + lobbies);
+        }
+    }
+
+    public void broadcastPlayerList(String lobbyName) throws IOException {
+        GameSession session = lobbyManager.getLobby(lobbyName);
+        if (session != null) {
+            String playerList = session.getPlayers().stream()
+                    .map(Player::getNickname)
+                    .collect(Collectors.joining(","));
+            for (Player player : session.getPlayers()) {
+                player.getOutput().println("PLAYER_LIST " + lobbyName + ":" + playerList);
+            }
+        }
+    }
+
 
     public static void main(String[] args) {
         try {
